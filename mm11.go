@@ -1,14 +1,15 @@
 package main
 
+/*
 import (
 	"fmt"
 	"time"
-)
+)*/
 
 var acc, rej, srv, dep chan Customer
 var chl, chs chan float64
 
-func arrive(gen ExpRng) {
+func arrive_mm11(gen ExpRng) {
 	var now float64
 	go func() {
 		// accept the 1st customer
@@ -25,7 +26,7 @@ func arrive(gen ExpRng) {
 	}()
 }
 
-func line() {
+func line_mm11() {
 	//var now float64
 	var cus Customer
 	go func() {
@@ -47,24 +48,25 @@ func line() {
 	}()
 }
 
-func serve(gen ExpRng) {
+func serve_mm11(gen ExpRng) {
 	var now float64
 	var cus Customer
 	go func() {
 		// depart the 1st customer
 		cus = <-srv
 		now = cus.t1 + gen()
-		dep <- Customer{cus.t0, cus.t1, now}
+		dep <- Customer{t0: cus.t0, t1: cus.t1, t2: now}
 		chs <- now // server will be idle at now
 		for {
 			cus = <-srv
 			now = cus.t1 + gen()
-			dep <- Customer{cus.t0, cus.t1, now}
+			dep <- Customer{t0: cus.t0, t1: cus.t1, t2: now}
 			chs <- now
 		}
 	}()
 }
 
+/*
 func main() {
 	acc = make(chan Customer)
 	rej = make(chan Customer)
@@ -73,9 +75,9 @@ func main() {
 	chl = make(chan float64)
 	chs = make(chan float64)
 
-	arrive(newExpRng(1.0))
-	line()
-	serve(newExpRng(1.0))
+	arrive_mm11(newExpRng(1.0))
+	line_mm11()
+	serve_mm11(newExpRng(1.0))
 	var cus Customer
 	for i := 0; i < 1000; i++ {
 		select {
@@ -91,3 +93,4 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 }
+*/
