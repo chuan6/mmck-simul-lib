@@ -1,4 +1,4 @@
-package main
+package mmx
 
 import (
 	"fmt"
@@ -7,128 +7,277 @@ import (
 )
 
 type Customer struct {
-	t0     float64
-	t1     float64
-	t2     float64
-	seat   int
-	server int
+	T0     float64 // time of arrival of the customer
+	T1     float64 // time of service of the customer
+	T2     float64 // time of departure of the customer
+	SeatID int     // identifier of the seat that seats the customer
+	SrvrID int     // identifier of the server that serves the customer
 }
 
-type ExpRng func() float64
+type Environment struct {
+	acc chan Customer // stream of accepted customers
+	Rej chan Customer // stream of rejected customers
+	srv chan Customer // stream of start-to-be-serviced customers
+	Dep chan Customer // stream of departed customers
+	chl chan float64  // stream of time points when line is available
+	chs chan float64  // stream of time points when server is available
+}
 
-func newExpRng(rate float64) ExpRng {
-	seed := time.Now().UnixNano()
-	fmt.Println("seed: ", seed)
-	r := rand.New(rand.NewSource(seed))
+func NewEnvironment() (e *Environment) {
+	e = new(Environment)
+	e.acc = make(chan Customer)
+	e.Rej = make(chan Customer)
+	e.srv = make(chan Customer)
+	e.Dep = make(chan Customer)
+	e.chl = make(chan float64)
+	e.chs = make(chan float64)
+	return
+}
+
+type ExpRNG func() float64
+
+// Initialize a new ExpRNG according to the given rate.
+func newExpRNG(rate float64) ExpRNG {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return func() float64 {
 		return r.ExpFloat64() / rate
 	}
 }
 
-type seat struct {
-	id  int
-	now float64
-}
-
-type queueOfSeats struct {
-	arr  []seat
-	bi int // new comming customer sits at "bi"
-}
-
-func (q queueOfSeats) nextIndex() (newback int) {
-	newback = (q.bi + 1) % cap(q.arr)
-	return
-}
-
-func (q *queueOfSeats) sit(c Customer) (sID int, sNow float64) {
-	if q.arr[q.bi].now > c.t0 {
-		q.bi = q.nextIndex()
-	}
-	q.arr[q.bi].now = c.t0
-	sID = q.arr[q.bi].id
-	sNow = q.arr[q.bi].now
-	return
-}
-
-func (q queueOfSeats) back() (now float64) {
-	now = q.arr[q.bi].now
-	nownext := q.arr[q.nextIndex()].now
-	if now > nownext {
-		now = nownext
-	}
-	return
-}
-
-func line_mmxx(n int) {
-	var q queueOfSeats
-	q.arr = make([]seat, n)
-	for i := 0; i < n; i++ {
-		q.arr[i].id = i
-	}
-	var c Customer
-	var sID int
-	var sNow float64
-
+func Arrive(e *Environment, rate float64) {
+	var now float64
+	gen := newExpRNG(rate)
 	go func() {
-		// get the 1st accepted customer
-		c = <-acc
-		sID, sNow = q.sit(c)
-		// and serve it
-		srv <- Customer{
-			t0: sNow,
-			t1: 0.0,
-			seat: sID,
-		}
-		// and "I have space now"
-		chl <- 0.0
+		// accept the 1st customer
+		e.acc <- Customer{T0: now}
 		for {
-			c = <-acc
-			sID, sNow = q.sit(c)
-			t := <-chs
-			if sNow > t {
-				t = sNow
-			} else {
-				q.arr[q.bi].now = t
-			}
-			srv <- Customer{
-				t0:   sNow,
-				t1:   t,
-				seat: sID,
-			}
-			chl <- q.back()
+			t := <-e.chl // line will have space at t
+			now += gen()
+			for now < t {
+				e.Rej <- Customer{T0: now}
+				now += gen()
+			} // now >= t
+			e.acc <- Customer{T0: now}
 		}
 	}()
 }
 
-func main() {
-	acc = make(chan Customer)
-	rej = make(chan Customer)
-	srv = make(chan Customer)
-	dep = make(chan Customer)
-	chl = make(chan float64)
-	chs = make(chan float64)
+// KEY CONCEPT! To be documented.
+type clock struct {
+	id  int     // each clock has an integer identifier
+	now float64 // current time of the clock
+}
 
-	ns := 5
-	gensForServer := make([]ExpRng, ns)
-	for i := 0; i < ns; i++ {
-		gensForServer[i] = newExpRng(1.0)
+// A seat is a unit resource of the waiting line.
+type seat clock
+
+// A line is seats arranged in queue.
+// Note: "queue" is referred here as a FIFO container with fixed capacity. Its
+// current implementation resembles ring buffer.
+type line struct {
+	arr []seat // refers to an underlying array that implements ring buffer
+	i   int    // index to the back of the queue (inclusive)
+}
+
+func makeline(n int) (q line) {
+	q.arr = make([]seat, n)
+	
+	// assign identifier for each seat
+	for i := 0; i < n; i++ {
+		q.arr[i].id = i
 	}
+	return
+}
 
-	arrive_mm11(newExpRng(5.0))
-	line_mm11()
-	serve_mmx1(gensForServer)
+func (q line) isuc() (i int) {
+	i = q.i + 1
+	if i == cap(q.arr) {
+		i = 0
+	}
+	return
+}
+
+func min(a, b float64) (m float64) {
+	m = a
+	if m > b {
+		m = b
+	}
+	return
+}
+
+func Line(e *Environment, k int) {
+	q := makeline(k)
+
+	go func() {
+		// handle the 1st accepted customer
+		cus := <-e.acc
+		if q.arr[q.i].now > cus.T0 {
+			q.i = q.isuc()
+		}
+		q.arr[q.i].now = cus.T0
+		id := q.arr[q.i].id
+		e.srv <- Customer{
+			T0: cus.T0,
+			T1: cus.T0,
+			SeatID: id,
+		}
+		e.chl <- cus.T0
+
+		for {
+			cus = <-e.acc
+			if q.arr[q.i].now > cus.T0 {
+				q.i = q.isuc()
+			}
+			q.arr[q.i].now = cus.T0
+			id = q.arr[q.i].id
+			t := <-e.chs
+			if cus.T0 > t {
+				t = cus.T0
+			} else {
+				q.arr[q.i].now = t
+			}
+			e.srv <- Customer{
+				T0: cus.T0,
+				T1: t,
+				SeatID: id,
+			}
+			e.chl <- min(q.arr[q.i].now, q.arr[q.isuc()].now)
+		}
+	}()
+}
+
+// A server is a unit resource of servers.
+type server struct {
+	clock
+	gen ExpRNG
+}
+
+// A group is servers arranged in min-heap.
+type group [](*server) // where heap is built upon
+
+func (h group) swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
+
+func (h group) minOfTri(i int) (min int) {
+	// returns i if h[i] <= h[left] && h[i] <= h[right]
+	min = i
+
+	j := 2*i + 1 // index of the left child
+	if j > len(h)-1 {
+		return
+	}
+	// j is a valid index
+	k := j + 1 // index of the right child
+	if k > len(h)-1 {
+		if h[i].now > h[j].now {
+			min = j
+		}
+		return
+	}
+	// k is a valid index
+	if h[i].now > h[j].now {
+		if h[j].now <= h[k].now {
+			min = j
+		} else {
+			min = k
+		}
+	} else if h[i].now > h[k].now {
+		min = k
+	}
+	return
+}
+
+func (h group) gen(now float64) (depTime float64, sid int) {
+	sid = h[0].id
+	depTime = now + h[0].gen()
+	h[0].now = depTime
+
+	s := 0
+	for t := h.minOfTri(s); s != t; t = h.minOfTri(s) {
+		//fmt.Print("s:", s, "; t:", t, " ")
+		h.swap(s, t) // floating down
+		s = t
+	} // heap property is kept
+	return
+}
+
+func (h group) top() (now float64) {
+	now = h[0].now
+	return
+}
+
+func makegroup(n int, r float64) (h group) {
+	h = make([]*server, n)
+	p := make([]server, n) // pointer to the underlying array that stores servers
+	for i := 0; i < n; i++ {
+		p[i].id = i
+		p[i].gen = newExpRNG(r)
+		h[i] = &p[i]
+	}
+	return
+}
+
+func Serve(e *Environment, c int, rate float64) {
+	h := makegroup(c, rate)
 	var cus Customer
-	for i := 0; i < 10000; i++ {
+	go func() {
+		// depart the 1st customer
+		cus = <-e.srv
+		deptime, sid := h.gen(cus.T1)
+		e.Dep <- Customer{
+			T0: cus.T0,
+			T1: cus.T1,
+			T2: deptime,
+			SeatID: cus.SeatID,
+			SrvrID: sid,
+		}
+		e.chs <- h.top()
+		for {
+			cus = <-e.srv
+			deptime, sid = h.gen(cus.T1)
+			e.Dep <- Customer{
+				T0: cus.T0,
+				T1: cus.T1,
+				T2: deptime,
+				SeatID: cus.SeatID,
+				SrvrID: sid,
+			}
+			e.chs <- h.top()
+		}
+	}()
+}
+
+/*
+func main() {
+	env := NewEnvironment()
+	Arrive(env, 10.0)
+	Line(env, 5)
+	Serve(env, 5, 1.0)
+
+	var cus Customer
+	var seat int
+	for i := 0; i < 1000000; i++ {
 		select {
-		case cus = <-dep:
-			if cus.t0 == cus.t1 {
+		case cus = <-env.Dep:
+			if cus.T0 == cus.T1 {
 				fmt.Print("served immediately; ")
 			}
-			fmt.Println("Departure[", cus.t0, cus.t1, cus.t2, cus.seat, cus.server, "]")
-		case cus = <-rej:
-			fmt.Println("Rejection[", cus.t0, "]")
+			if seat > cus.SeatID {
+				fmt.Print("\n")
+			}
+			fmt.Printf("%d", cus.SeatID)
+
+			seat = cus.SeatID
+			//fmt.Print(cus.SeatID)
+			//fmt.Println("Departure[", cus.SeatID, "]")
+			//fmt.Printf("%s\t%.2f\t%.2f\t%.2f\t%d\n", "Dep:", cus.T0, cus.T1, cus.T2, cus.SrvrID)
+		case <-env.Rej:
+			//fmt.Print("R")
+			//fmt.Printf("\t%s\t%.2f\n", "Rej:", cus.T0)
 		}
 	}
 
 	time.Sleep(2 * time.Second)
 }
+*/
