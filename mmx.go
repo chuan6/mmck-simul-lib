@@ -1,3 +1,22 @@
+// Package mmx implements simulation of M/M/C/k queueing systems.
+// Usage:
+// 	envptr := NewEnvironment()
+//	Arrive(envptr, _arrival_rate_)
+//	Line  (envptr, _line_capacity_)
+//	Serve (envptr, _number_of_servers_, _service_rate_per_server_)
+//
+//	// statistical analysis on output from the rejection channel, and
+//	// departure channel
+//	var c Customer
+//	for i := 0; i < _nloops_; i++ {
+//		select {
+//		case c = <-envptr.Dep:
+//			// handle the departed customer c
+//		caes c = <-envptr.Rej:
+//			// handle the rejected customer c
+//		}
+//	}
+//	...
 package mmx
 
 import (
@@ -14,6 +33,10 @@ type Customer struct {
 	SrvrID int     // identifier of the server that serves the customer
 }
 
+// An Environment is a set of resources local to one simulation.
+// Rej and Dep are two of its public interfaces (channels), former of which
+// outputs rejected customers, while the latter outputs successfully departed
+// customers.
 type Environment struct {
 	acc chan Customer // stream of accepted customers
 	Rej chan Customer // stream of rejected customers
@@ -23,6 +46,7 @@ type Environment struct {
 	chs chan float64  // stream of time points when server is available
 }
 
+// Create one Environment for one simulation.
 func NewEnvironment() (e *Environment) {
 	e = new(Environment)
 	e.acc = make(chan Customer)
@@ -44,6 +68,7 @@ func newExpRNG(rate float64) ExpRNG {
 	}
 }
 
+// Go generate arrivals!
 func Arrive(e *Environment, rate float64) {
 	var now float64
 	gen := newExpRNG(rate)
@@ -81,7 +106,7 @@ type line struct {
 
 func makeline(n int) (q line) {
 	q.arr = make([]seat, n)
-	
+
 	// assign identifier for each seat
 	for i := 0; i < n; i++ {
 		q.arr[i].id = i
@@ -89,6 +114,8 @@ func makeline(n int) (q line) {
 	return
 }
 
+// Return the succeeding index into the line's underlying array.
+// Once the index reaches capacity of the line, reset it to zero.
 func (q line) isuc() (i int) {
 	i = q.i + 1
 	if i == cap(q.arr) {
@@ -105,6 +132,7 @@ func min(a, b float64) (m float64) {
 	return
 }
 
+// Go manage the FIFO waiting line!
 func Line(e *Environment, k int) {
 	q := makeline(k)
 
@@ -117,8 +145,8 @@ func Line(e *Environment, k int) {
 		q.arr[q.i].now = cus.T0
 		id := q.arr[q.i].id
 		e.srv <- Customer{
-			T0: cus.T0,
-			T1: cus.T0,
+			T0:     cus.T0,
+			T1:     cus.T0,
 			SeatID: id,
 		}
 		e.chl <- cus.T0
@@ -137,8 +165,8 @@ func Line(e *Environment, k int) {
 				q.arr[q.i].now = t
 			}
 			e.srv <- Customer{
-				T0: cus.T0,
-				T1: t,
+				T0:     cus.T0,
+				T1:     t,
 				SeatID: id,
 			}
 			e.chl <- min(q.arr[q.i].now, q.arr[q.isuc()].now)
@@ -146,13 +174,13 @@ func Line(e *Environment, k int) {
 	}()
 }
 
-// A server is a unit resource of servers.
+// A server is a unit resource of the server group.
 type server struct {
 	clock
 	gen ExpRNG
 }
 
-// A group is servers arranged in min-heap.
+// A group is servers arranged in min-heap (according to their clock).
 type group [](*server) // where heap is built upon
 
 func (h group) swap(i, j int) {
@@ -218,6 +246,7 @@ func makegroup(n int, r float64) (h group) {
 	return
 }
 
+// Go schedule departures for incomming customers!
 func Serve(e *Environment, c int, rate float64) {
 	h := makegroup(c, rate)
 	var cus Customer
@@ -226,9 +255,9 @@ func Serve(e *Environment, c int, rate float64) {
 		cus = <-e.srv
 		deptime, sid := h.gen(cus.T1)
 		e.Dep <- Customer{
-			T0: cus.T0,
-			T1: cus.T1,
-			T2: deptime,
+			T0:     cus.T0,
+			T1:     cus.T1,
+			T2:     deptime,
 			SeatID: cus.SeatID,
 			SrvrID: sid,
 		}
@@ -237,9 +266,9 @@ func Serve(e *Environment, c int, rate float64) {
 			cus = <-e.srv
 			deptime, sid = h.gen(cus.T1)
 			e.Dep <- Customer{
-				T0: cus.T0,
-				T1: cus.T1,
-				T2: deptime,
+				T0:     cus.T0,
+				T1:     cus.T1,
+				T2:     deptime,
 				SeatID: cus.SeatID,
 				SrvrID: sid,
 			}
@@ -247,37 +276,3 @@ func Serve(e *Environment, c int, rate float64) {
 		}
 	}()
 }
-
-/*
-func main() {
-	env := NewEnvironment()
-	Arrive(env, 10.0)
-	Line(env, 5)
-	Serve(env, 5, 1.0)
-
-	var cus Customer
-	var seat int
-	for i := 0; i < 1000000; i++ {
-		select {
-		case cus = <-env.Dep:
-			if cus.T0 == cus.T1 {
-				fmt.Print("served immediately; ")
-			}
-			if seat > cus.SeatID {
-				fmt.Print("\n")
-			}
-			fmt.Printf("%d", cus.SeatID)
-
-			seat = cus.SeatID
-			//fmt.Print(cus.SeatID)
-			//fmt.Println("Departure[", cus.SeatID, "]")
-			//fmt.Printf("%s\t%.2f\t%.2f\t%.2f\t%d\n", "Dep:", cus.T0, cus.T1, cus.T2, cus.SrvrID)
-		case <-env.Rej:
-			//fmt.Print("R")
-			//fmt.Printf("\t%s\t%.2f\n", "Rej:", cus.T0)
-		}
-	}
-
-	time.Sleep(2 * time.Second)
-}
-*/
