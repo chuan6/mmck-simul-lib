@@ -20,7 +20,6 @@
 package mmx
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -58,6 +57,10 @@ func NewEnvironment() (e *Environment) {
 	return
 }
 
+// The exponential random number generator type, whose value, a function,
+// returns a "real" random number every time it is called. And the sequence
+// of number generated through a number of calls follow exponential
+// distribution.
 type ExpRNG func() float64
 
 // Initialize a new ExpRNG according to the given rate.
@@ -187,6 +190,8 @@ func (h group) swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 }
 
+// Given the i-th element within the heap, return the index of the
+// minimum of the i-th element, its left child, and its right child.
 func (h group) minOfTri(i int) (min int) {
 	// returns i if h[i] <= h[left] && h[i] <= h[right]
 	min = i
@@ -216,6 +221,8 @@ func (h group) minOfTri(i int) (min int) {
 	return
 }
 
+// Given start servicing time, return a scheduled departure time,
+// and the corresponding server ID. Properties of the heap is maintained.
 func (h group) gen(now float64) (depTime float64, sid int) {
 	sid = h[0].id
 	depTime = now + h[0].gen()
@@ -223,13 +230,13 @@ func (h group) gen(now float64) (depTime float64, sid int) {
 
 	s := 0
 	for t := h.minOfTri(s); s != t; t = h.minOfTri(s) {
-		//fmt.Print("s:", s, "; t:", t, " ")
 		h.swap(s, t) // floating down
 		s = t
 	} // heap property is kept
 	return
 }
 
+// Return the current time of the server on top of the heap.
 func (h group) top() (now float64) {
 	now = h[0].now
 	return
