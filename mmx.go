@@ -37,20 +37,21 @@ type Customer struct {
 // outputs rejected customers, while the latter outputs successfully departed
 // customers.
 type Environment struct {
-	acc chan Customer // stream of accepted customers
+	acc chan float64  // stream of arrival times of accepted customers
 	Rej chan Customer // stream of rejected customers
-	srv chan Customer // stream of start-to-be-serviced customers
+	srv chan float64  // stream of start servicing times of customers in line
 	Dep chan Customer // stream of departed customers
 	chl chan float64  // stream of time points when line is available
 	chs chan float64  // stream of time points when server is available
+	cus Customer      // the current customer
 }
 
 // Create one Environment for one simulation.
 func NewEnvironment() (e *Environment) {
 	e = new(Environment)
-	e.acc = make(chan Customer)
+	e.acc = make(chan float64)
 	e.Rej = make(chan Customer)
-	e.srv = make(chan Customer)
+	e.srv = make(chan float64)
 	e.Dep = make(chan Customer)
 	e.chl = make(chan float64)
 	e.chs = make(chan float64)
@@ -77,7 +78,7 @@ func Arrive(e *Environment, rate float64) {
 	gen := newExpRNG(rate)
 	go func() {
 		// accept the 1st customer
-		e.acc <- Customer{T0: now}
+		e.acc <- 0.0
 		for {
 			t := <-e.chl // line will have space at t
 			now += gen()
@@ -85,7 +86,8 @@ func Arrive(e *Environment, rate float64) {
 				e.Rej <- Customer{T0: now}
 				now += gen()
 			} // now >= t
-			e.acc <- Customer{T0: now}
+			e.cus.T0 = now // set arrival time of the current customer
+			e.acc <- now   // notice Line the new accepted arrival
 		}
 	}()
 }
@@ -141,37 +143,34 @@ func Line(e *Environment, k int) {
 
 	go func() {
 		// handle the 1st accepted customer
-		cus := <-e.acc
-		if q.arr[q.i].now > cus.T0 {
+		t0 := <-e.acc
+		if q.arr[q.i].now > t0 {
 			q.i = q.isuc()
 		}
-		q.arr[q.i].now = cus.T0
+		q.arr[q.i].now = t0
 		id := q.arr[q.i].id
-		e.srv <- Customer{
-			T0:     cus.T0,
-			T1:     cus.T0,
-			SeatID: id,
-		}
-		e.chl <- cus.T0
+		e.cus.T1 = t0
+		e.cus.SeatID = id
+		e.srv <- t0
+		e.chl <- t0
 
 		for {
-			cus = <-e.acc
-			if q.arr[q.i].now > cus.T0 {
+			t0 = <-e.acc
+			if q.arr[q.i].now > t0 {
 				q.i = q.isuc()
 			}
-			q.arr[q.i].now = cus.T0
+			q.arr[q.i].now = t0
 			id = q.arr[q.i].id
-			t := <-e.chs
-			if cus.T0 > t {
-				t = cus.T0
+
+			t1 := <-e.chs
+			if t0 > t1 {
+				t1 = t0
 			} else {
-				q.arr[q.i].now = t
+				q.arr[q.i].now = t1
 			}
-			e.srv <- Customer{
-				T0:     cus.T0,
-				T1:     t,
-				SeatID: id,
-			}
+			e.cus.T1 = t1
+			e.cus.SeatID = id
+			e.srv <- t1
 			e.chl <- min(q.arr[q.i].now, q.arr[q.isuc()].now)
 		}
 	}()
@@ -193,7 +192,7 @@ func (h group) swap(i, j int) {
 // Given the i-th element within the heap, return the index of the
 // minimum of the i-th element, its left child, and its right child.
 func (h group) minOfTri(i int) (min int) {
-	// returns i if h[i] <= h[left] && h[i] <= h[right]
+	// return i if h[i] <= h[left] && h[i] <= h[right]
 	min = i
 
 	j := 2*i + 1 // index of the left child
@@ -256,29 +255,20 @@ func makegroup(n int, r float64) (h group) {
 // Go schedule departures for incomming customers!
 func Serve(e *Environment, c int, rate float64) {
 	h := makegroup(c, rate)
-	var cus Customer
 	go func() {
 		// depart the 1st customer
-		cus = <-e.srv
-		deptime, sid := h.gen(cus.T1)
-		e.Dep <- Customer{
-			T0:     cus.T0,
-			T1:     cus.T1,
-			T2:     deptime,
-			SeatID: cus.SeatID,
-			SrvrID: sid,
-		}
+		t1 := <-e.srv
+		t2, sid := h.gen(t1)
+		e.cus.T2 = t2
+		e.cus.SrvrID = sid
+		e.Dep <- e.cus
 		e.chs <- h.top()
 		for {
-			cus = <-e.srv
-			deptime, sid = h.gen(cus.T1)
-			e.Dep <- Customer{
-				T0:     cus.T0,
-				T1:     cus.T1,
-				T2:     deptime,
-				SeatID: cus.SeatID,
-				SrvrID: sid,
-			}
+			t1 = <-e.srv
+			t2, sid = h.gen(t1)
+			e.cus.T2 = t2
+			e.cus.SrvrID = sid
+			e.Dep <- e.cus
 			e.chs <- h.top()
 		}
 	}()
