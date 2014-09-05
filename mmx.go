@@ -164,9 +164,9 @@ func Line(e *Environment, k int) {
 
 			t1 := <-e.chs
 			if t0 > t1 {
-				t1 = t0
+				t1 = t0 // time of arrival == time of service
 			} else {
-				q.arr[q.i].now = t1
+				q.arr[q.i].now = t1 // wait until time of service
 			}
 			e.cus.T1 = t1
 			e.cus.SeatID = id
@@ -227,11 +227,12 @@ func (h group) gen(now float64) (depTime float64, sid int) {
 	depTime = now + h[0].gen()
 	h[0].now = depTime
 
+	// maintain the heap
 	s := 0
 	for t := h.minOfTri(s); s != t; t = h.minOfTri(s) {
 		h.swap(s, t) // floating down
 		s = t
-	} // heap property is kept
+	}
 	return
 }
 
@@ -241,6 +242,7 @@ func (h group) top() (now float64) {
 	return
 }
 
+// Make a group of n servers, all of which are specified having service rate r.
 func makegroup(n int, r float64) (h group) {
 	h = make([]*server, n)
 	p := make([]server, n) // pointer to the underlying array that stores servers
@@ -258,16 +260,12 @@ func Serve(e *Environment, c int, rate float64) {
 	go func() {
 		// depart the 1st customer
 		t1 := <-e.srv
-		t2, sid := h.gen(t1)
-		e.cus.T2 = t2
-		e.cus.SrvrID = sid
+		e.cus.T2, e.cus.SrvrID = h.gen(t1)
 		e.Dep <- e.cus
 		e.chs <- h.top()
 		for {
 			t1 = <-e.srv
-			t2, sid = h.gen(t1)
-			e.cus.T2 = t2
-			e.cus.SrvrID = sid
+			e.cus.T2, e.cus.SrvrID = h.gen(t1)
 			e.Dep <- e.cus
 			e.chs <- h.top()
 		}
