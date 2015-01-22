@@ -1,18 +1,18 @@
-// Package mmx implements simulation of M/M/C/k queueing systems.
+// Package mmx implements simulation of M/M/c/k queueing systems.
 // Usage:
-// 	envptr := NewEnvironment()
-//	Arrive(envptr, _arrival_rate_)
-//	Line  (envptr, _line_capacity_)
-//	Serve (envptr, _number_of_servers_, _service_rate_per_server_)
+// 	simtask := mmx.NewEnvironment()
+//	mmx.Arrive(simtask, _arrival_rate_)
+//	mmx.Line  (simtask, _line_capacity_)
+//	mmx.Serve (simtask, _number_of_servers_, _service_rate_per_server_)
 //
 //	// statistical analysis on output from the rejection channel, and
 //	// departure channel
-//	var c Customer
-//	for i := 0; i < _nloops_; i++ {
+//	var c mmx.Customer
+//	for i := 0; i < _narrivals_; i++ {
 //		select {
-//		case c = <-envptr.Dep:
+//		case c = <-simtask.Dep:
 //			// handle the departed customer c
-//		caes c = <-envptr.Rej:
+//		caes c = <-simtask.Rej:
 //			// handle the rejected customer c
 //		}
 //	}
