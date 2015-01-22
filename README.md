@@ -26,3 +26,6 @@ for i := 0; i < _narrivals_; i++ {
 	}
 }
 ```
+Design:
+![Alt text](images_design_illustration/scan1.jpg?raw=true "Page 1.")
+![Alt text](images_design_illustration/scan2.jpg?raw=true "Page 2.")
