@@ -1,5 +1,5 @@
 # simulation-queueing-mmx
-A library for M/M/c/K queueing system simulation written in Go.
+A library for intuitive M/M/c/K queueing system simulation, written in Go.
 
 To use it, 1) arrival rate; 2) queue capacity; 3) service rate per server; and 4) number of servers, need to be provided.
 
