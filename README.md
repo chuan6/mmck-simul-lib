@@ -9,20 +9,22 @@ Performance of the queuing system under your configuration is evaluated by "aski
 
 Usage:
 ```go
-simtask := mmx.NewEnvironment()
-mmx.Arrive(simtask, _arrival_rate_)
-mmx.Line  (simtask, _line_capacity_)
-mmx.Serve (simtask, _number_of_servers_, _service_rate_per_server_)
-
 // do statistical analysis on output from the rejection channel, and
 // departure channel
+simtask := mmx.NewEnvironment()
+
+simtask.Arrive(_arrival_rate_)
+simtask.Line  (_line_capacity_)
+simtask.Serve (_number_of_servers_, _service_rate_per_server_)
+
+rejected, departed := simtask.Output()
 var c mmx.Customer
-for i := 0; i < _narrivals_; i++ {
-	select {
-	case c = <-simtask.Dep:
-		// ask the departed customer c
-	caes c = <-simtask.Rej:
-		// ask the rejected customer c
-	}
+for i := 0; i < _ncustomers_; i++ {
+        select {
+        case c = <-departed:
+                // ask the departed customer c
+        case c = <-rejected:
+                // ask the rejected customer c
+        }
 }
 ```

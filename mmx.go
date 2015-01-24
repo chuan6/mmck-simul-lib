@@ -1,22 +1,22 @@
 // Package mmx implements simulation of M/M/c/k queueing systems.
 // Usage:
-// 	simtask := mmx.NewEnvironment()
-//	mmx.Arrive(simtask, _arrival_rate_)
-//	mmx.Line  (simtask, _line_capacity_)
-//	mmx.Serve (simtask, _number_of_servers_, _service_rate_per_server_)
 //
-//	// statistical analysis on output from the rejection channel, and
-//	// departure channel
-//	var c mmx.Customer
-//	for i := 0; i < _narrivals_; i++ {
-//		select {
-//		case c = <-simtask.Dep:
-//			// handle the departed customer c
-//		caes c = <-simtask.Rej:
-//			// handle the rejected customer c
-//		}
-//	}
-//	...
+//  simtask := mmx.NewEnvironment()
+//  simtask.Arrive(_arrival_rate_)
+//  simtask.Line  (_line_capacity_)
+//  simtask.Serve (_number_of_servers_, _service_rate_per_server_)
+//
+//  rejected, departed := simtask.Output()
+//  var c mmx.Customer
+//  for i := 0; i < _ncustomers_; i++ {
+//      select {
+//      case c = <-departed:
+//          // ask the departed customer c
+// 	case c = <-rejected:
+//          // ask the rejected customer c
+//      }
+//  }
+
 package mmx
 
 import (
@@ -33,14 +33,11 @@ type Customer struct {
 }
 
 // An Environment is a set of resources local to one simulation.
-// Rej and Dep are two of its public interfaces (channels), former of which
-// outputs rejected customers, while the latter outputs successfully departed
-// customers.
 type Environment struct {
 	acc chan float64  // stream of arrival times of accepted customers
-	Rej chan Customer // stream of rejected customers
+	rej chan Customer // stream of rejected customers
 	srv chan float64  // stream of start servicing times of customers in line
-	Dep chan Customer // stream of departed customers
+	dep chan Customer // stream of departed customers
 	chl chan float64  // stream of time points when line is available
 	chs chan float64  // stream of time points when server is available
 	cus Customer      // the current customer
@@ -50,11 +47,17 @@ type Environment struct {
 func NewEnvironment() (e *Environment) {
 	e = new(Environment)
 	e.acc = make(chan float64)
-	e.Rej = make(chan Customer)
+	e.rej = make(chan Customer)
 	e.srv = make(chan float64)
-	e.Dep = make(chan Customer)
+	e.dep = make(chan Customer)
 	e.chl = make(chan float64)
 	e.chs = make(chan float64)
+	return
+}
+
+func (e *Environment) Output() (rej, dep <-chan Customer) {
+	rej = e.rej
+	dep = e.dep
 	return
 }
 
@@ -73,7 +76,7 @@ func newExpRNG(rate float64) ExpRNG {
 }
 
 // Go generate arrivals!
-func Arrive(e *Environment, rate float64) {
+func (e *Environment) Arrive(rate float64) {
 	var now float64
 	gen := newExpRNG(rate)
 	go func() {
@@ -83,7 +86,7 @@ func Arrive(e *Environment, rate float64) {
 			t := <-e.chl // line will have space at t
 			now += gen()
 			for now < t {
-				e.Rej <- Customer{T0: now}
+				e.rej <- Customer{T0: now}
 				now += gen()
 			} // now >= t
 			e.cus.T0 = now // set arrival time of the current customer
@@ -138,7 +141,7 @@ func min(a, b float64) (m float64) {
 }
 
 // Go manage the FIFO waiting line!
-func Line(e *Environment, k int) {
+func (e *Environment) Line(k int) {
 	q := makeline(k)
 
 	go func() {
@@ -255,18 +258,18 @@ func makegroup(n int, r float64) (h group) {
 }
 
 // Go schedule departures for incomming customers!
-func Serve(e *Environment, c int, rate float64) {
+func (e *Environment) Serve(c int, rate float64) {
 	h := makegroup(c, rate)
 	go func() {
 		// depart the 1st customer
 		t1 := <-e.srv
 		e.cus.T2, e.cus.SrvrID = h.gen(t1)
-		e.Dep <- e.cus
+		e.dep <- e.cus
 		e.chs <- h.top()
 		for {
 			t1 = <-e.srv
 			e.cus.T2, e.cus.SrvrID = h.gen(t1)
-			e.Dep <- e.cus
+			e.dep <- e.cus
 			e.chs <- h.top()
 		}
 	}()
