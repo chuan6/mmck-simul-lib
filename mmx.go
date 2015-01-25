@@ -28,7 +28,6 @@ type Customer struct {
 	T0     float64 // time of arrival of the customer
 	T1     float64 // time of service of the customer
 	T2     float64 // time of departure of the customer
-	SeatID int     // identifier of the seat that seats the customer
 	SrvrID int     // identifier of the server that serves the customer
 }
 
@@ -95,49 +94,21 @@ func (e *Environment) Arrive(rate float64) {
 	}()
 }
 
-// KEY CONCEPT! To be documented.
-type clock struct {
-	id  int     // each clock has an integer identifier
-	now float64 // current time of the clock
-}
-
-// A seat is a unit resource of the waiting line.
-type seat clock
-
 // A line is seats arranged in queue.
 // Note: "queue" is referred here as a FIFO container with fixed capacity. Its
 // current implementation resembles ring buffer.
 type line struct {
-	arr []seat // refers to an underlying array that implements ring buffer
+	arr []float64 // refers to an underlying array that implements ring buffer
 	i   int    // index to the back of the queue (inclusive)
 }
 
 func makeline(n int) (q line) {
-	q.arr = make([]seat, n)
-
-	// assign identifier for each seat
-	for i := 0; i < n; i++ {
-		q.arr[i].id = i
-	}
+	q.arr = make([]float64, n)
 	return
 }
 
-// Return the succeeding index into the line's underlying array.
-// Once the index reaches capacity of the line, reset it to zero.
-func (q line) isuc() (i int) {
-	i = q.i + 1
-	if i == cap(q.arr) {
-		i = 0
-	}
-	return
-}
-
-func min(a, b float64) (m float64) {
-	m = a
-	if m > b {
-		m = b
-	}
-	return
+func (q *line) isuc() int {
+	return (q.i + 1) % cap(q.arr)
 }
 
 // Go manage the FIFO waiting line!
@@ -147,80 +118,63 @@ func (e *Environment) Line(k int) {
 	go func() {
 		// handle the 1st accepted customer
 		t0 := <-e.acc
-		if q.arr[q.i].now > t0 {
-			q.i = q.isuc()
-		}
-		q.arr[q.i].now = t0
-		id := q.arr[q.i].id
+		q.arr[q.i] = t0
 		e.cus.T1 = t0
-		e.cus.SeatID = id
 		e.srv <- t0
 		e.chl <- t0
 
+		var t1 float64
 		for {
 			t0 = <-e.acc
-			if q.arr[q.i].now > t0 {
+			t1 = <-e.chs
+			if t0 >= t1 {
+				t1 = t0
+				q.arr[q.i] = t1
+			} else {
+				q.arr[q.i] = t1
 				q.i = q.isuc()
 			}
-			q.arr[q.i].now = t0
-			id = q.arr[q.i].id
-
-			t1 := <-e.chs
-			if t0 > t1 {
-				t1 = t0 // time of arrival == time of service
-			} else {
-				q.arr[q.i].now = t1 // wait until time of service
-			}
 			e.cus.T1 = t1
-			e.cus.SeatID = id
 			e.srv <- t1
-			e.chl <- min(q.arr[q.i].now, q.arr[q.isuc()].now)
+			e.chl <- q.arr[q.i]
 		}
 	}()
 }
 
 // A server is a unit resource of the server group.
 type server struct {
-	clock
+	id int
+	now float64
 	gen ExpRNG
 }
 
 // A group is servers arranged in min-heap (according to their clock).
 type group [](*server) // where heap is built upon
 
-func (h group) swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
+func (h group) min(i, j int) int {
+	if h[j].now < h[i].now {
+		return j
+	}
+	return i
 }
 
 // Given the i-th element within the heap, return the index of the
 // minimum of the i-th element, its left child, and its right child.
-func (h group) minOfTri(i int) (min int) {
-	// return i if h[i] <= h[left] && h[i] <= h[right]
-	min = i
+func (h group) minOfTri(i int) int {
+	j := 2*i + 1
+	k := j + 1
+	limit := len(h) - 1
 
-	j := 2*i + 1 // index of the left child
-	if j > len(h)-1 {
-		return
+	switch {
+	case j > limit:
+		return i
+	case k > limit:
+		return h.min(i, j)
+	case h.min(i, j) == i:
+		return h.min(i, k)
+	default:
+		return h.min(j, k)
 	}
-	// j is a valid index
-	k := j + 1 // index of the right child
-	if k > len(h)-1 {
-		if h[i].now > h[j].now {
-			min = j
-		}
-		return
-	}
-	// k is a valid index
-	if h[i].now > h[j].now {
-		if h[j].now <= h[k].now {
-			min = j
-		} else {
-			min = k
-		}
-	} else if h[i].now > h[k].now {
-		min = k
-	}
-	return
 }
 
 // Given start servicing time, return a scheduled departure time,
@@ -233,15 +187,9 @@ func (h group) gen(now float64) (depTime float64, sid int) {
 	// maintain the heap
 	s := 0
 	for t := h.minOfTri(s); s != t; t = h.minOfTri(s) {
-		h.swap(s, t) // floating down
+		h[s], h[t] = h[t], h[s] // floating down
 		s = t
 	}
-	return
-}
-
-// Return the current time of the server on top of the heap.
-func (h group) top() (now float64) {
-	now = h[0].now
 	return
 }
 
@@ -265,12 +213,12 @@ func (e *Environment) Serve(c int, rate float64) {
 		t1 := <-e.srv
 		e.cus.T2, e.cus.SrvrID = h.gen(t1)
 		e.dep <- e.cus
-		e.chs <- h.top()
+		e.chs <- h[0].now // the current time of the server on top of the heap
 		for {
 			t1 = <-e.srv
 			e.cus.T2, e.cus.SrvrID = h.gen(t1)
 			e.dep <- e.cus
-			e.chs <- h.top()
+			e.chs <- h[0].now
 		}
 	}()
 }

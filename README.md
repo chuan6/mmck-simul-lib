@@ -11,7 +11,7 @@ The implementation is designed so that user can easily give different service ra
 
 To use it, 1) arrival rate; 2) queue capacity; 3) service rate per server; and 4) number of servers, need to be provided.
 
-Performance of the queuing system under your configuration is evaluated by "asking" the customers leaving the system (rejected or serviced), about their arrival time, service time, departure time, even the seat No. and server No. the customer used.
+Performance of the queuing system under your configuration is evaluated by "asking" the customers leaving the system (rejected or serviced), about their arrival time, service time, departure time, and server No. the customer used.
 
 Usage:
 ```go
