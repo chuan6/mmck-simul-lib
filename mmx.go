@@ -94,7 +94,7 @@ func (e *Environment) Arrive(rate float64) {
 	}()
 }
 
-// A line is seats arranged in queue.
+// A line is waiting positions arranged in queue.
 // Note: "queue" is referred here as a FIFO container with fixed capacity. Its
 // current implementation resembles ring buffer.
 type line struct {
