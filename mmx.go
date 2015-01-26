@@ -1,21 +1,24 @@
-// Package mmx implements simulation of M/M/c/k queueing systems.
-// Usage:
-//
-//  simtask := mmx.NewEnvironment()
-//  simtask.Arrive(_arrival_rate_)
-//  simtask.Line  (_line_capacity_)
-//  simtask.Serve (_number_of_servers_, _service_rate_per_server_)
-//
-//  rejected, departed := simtask.Output()
-//  var c mmx.Customer
-//  for i := 0; i < _ncustomers_; i++ {
-//      select {
-//      case c = <-departed:
-//          // ask the departed customer c
-// 	case c = <-rejected:
-//          // ask the rejected customer c
-//      }
-//  }
+/* Package mmx implements simulation of M/M/c/k queueing systems.
+ Usage:
+
+Serve(Line(Arrive(_arrival_rate_), _line_capacity_), _nservers_, _service_rate_per_server)
+
+  simtask := mmx.NewEnvironment()
+  simtask.Arrive(_arrival_rate_)
+  simtask.Line  (_line_capacity_)
+  simtask.Serve (_number_of_servers_, _service_rate_per_server_)
+
+  rejected, departed := simtask.Output()
+  var c mmx.Customer
+  for i := 0; i < _ncustomers_; i++ {
+      select {
+      case c = <-departed:
+          // ask the departed customer c
+ 	case c = <-rejected:
+          // ask the rejected customer c
+      }
+  }
+*/
 
 package mmx
 
@@ -31,33 +34,9 @@ type Customer struct {
 	SrvrID int     // identifier of the server that serves the customer
 }
 
-// An Environment is a set of resources local to one simulation.
-type Environment struct {
-	acc chan float64  // stream of arrival times of accepted customers
-	rej chan Customer // stream of rejected customers
-	srv chan float64  // stream of start servicing times of customers in line
-	dep chan Customer // stream of departed customers
-	chl chan float64  // stream of time points when line is available
-	chs chan float64  // stream of time points when server is available
-	cus Customer      // the current customer
-}
-
-// Create one Environment for one simulation.
-func NewEnvironment() (e *Environment) {
-	e = new(Environment)
-	e.acc = make(chan float64)
-	e.rej = make(chan Customer)
-	e.srv = make(chan float64)
-	e.dep = make(chan Customer)
-	e.chl = make(chan float64)
-	e.chs = make(chan float64)
-	return
-}
-
-func (e *Environment) Output() (rej, dep <-chan Customer) {
-	rej = e.rej
-	dep = e.dep
-	return
+type Inter struct {
+	recv <-chan Customer
+	send chan<- float64
 }
 
 // The exponential random number generator type, whose value, a function,
@@ -75,23 +54,32 @@ func newExpRNG(rate float64) ExpRNG {
 }
 
 // Go generate arrivals!
-func (e *Environment) Arrive(rate float64) {
-	var now float64
+func Arrive(rate float64) (io Inter, rejected <-chan Customer) {
 	gen := newExpRNG(rate)
+	acc := make(chan Customer)
+	chl := make(chan float64)
+	rej := make(chan Customer)
+
 	go func() {
+		var t0, now float64
+
 		// accept the 1st customer
-		e.acc <- 0.0
+		acc <- Customer{T0: 0.0}
 		for {
-			t := <-e.chl // line will have space at t
-			now += gen()
-			for now < t {
-				e.rej <- Customer{T0: now}
-				now += gen()
-			} // now >= t
-			e.cus.T0 = now // set arrival time of the current customer
-			e.acc <- now   // notice Line the new accepted arrival
+			now = <-chl // line have space at now
+			t0 += gen()
+			for t0 < now {
+				rej <- Customer{T0: t0}
+				t0 += gen()
+			} // t0 >= now
+			acc <- Customer{T0: t0}
 		}
 	}()
+	
+	io.recv = acc
+	io.send = chl
+	rejected = rej
+	return
 }
 
 // A line is waiting positions arranged in queue.
@@ -112,33 +100,38 @@ func (q *line) isuc() int {
 }
 
 // Go manage the FIFO waiting line!
-func (e *Environment) Line(k int) {
-	q := makeline(k)
+func Line(io Inter, c int) Inter {
+	q := makeline(c)
+	acc := io.recv
+	chl := io.send
+	srv := make(chan Customer)
+	chs := make(chan float64)
 
 	go func() {
-		// handle the 1st accepted customer
-		t0 := <-e.acc
-		q.arr[q.i] = t0
-		e.cus.T1 = t0
-		e.srv <- t0
-		e.chl <- t0
+		cus := <-acc
+		q.arr[q.i] = cus.T0
+		cus.T1 = cus.T0
+		srv <- cus
+		chl <- cus.T0
 
-		var t1 float64
+		var now float64
 		for {
-			t0 = <-e.acc
-			t1 = <-e.chs
-			if t0 >= t1 {
-				t1 = t0
-				q.arr[q.i] = t1
+			cus = <-acc
+			now = <-chs
+			if cus.T0 >= now {
+				now = cus.T0
+				q.arr[q.i] = now
 			} else {
-				q.arr[q.i] = t1
+				q.arr[q.i] = now
 				q.i = q.isuc()
 			}
-			e.cus.T1 = t1
-			e.srv <- t1
-			e.chl <- q.arr[q.i]
+			cus.T1 = now
+			srv <- cus
+			chl <- q.arr[q.i]
 		}
 	}()
+	
+	return Inter{recv: srv, send: chs}
 }
 
 // A server is a unit resource of the server group.
@@ -206,19 +199,28 @@ func makegroup(n int, r float64) (h group) {
 }
 
 // Go schedule departures for incomming customers!
-func (e *Environment) Serve(c int, rate float64) {
-	h := makegroup(c, rate)
+func Serve(io Inter, n int, rate float64) (departed <-chan Customer) {
+	h := makegroup(n, rate)
+	srv := io.recv
+	chs := io.send
+	dep := make(chan Customer)
+
 	go func() {
 		// depart the 1st customer
-		t1 := <-e.srv
-		e.cus.T2, e.cus.SrvrID = h.gen(t1)
-		e.dep <- e.cus
-		e.chs <- h[0].now // the current time of the server on top of the heap
+		cus := <-srv
+		cus.T2, cus.SrvrID = h.gen(cus.T1)
+		dep <- cus
+		chs <- h[0].now // the current time of the server on top of the heap
+
 		for {
-			t1 = <-e.srv
-			e.cus.T2, e.cus.SrvrID = h.gen(t1)
-			e.dep <- e.cus
-			e.chs <- h[0].now
+			cus = <-srv
+			cus.T2, cus.SrvrID = h.gen(cus.T1)
+			dep <- cus
+			chs <- h[0].now
 		}
 	}()
+	
+	departed = dep
+	return
 }
+
