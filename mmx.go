@@ -224,3 +224,49 @@ func Serve(io Inter, n int, rate float64) (departed <-chan Customer) {
 	return
 }
 
+func Combined(arate float64, narr int, c int, srate float64, n int) (rejs, deps <-chan Customer) {
+	/* all parameters should be none negative */
+	
+	var chl, chs float64
+	rej := make(chan Customer)
+	dep := make(chan Customer)
+
+	arrgen := newExpRNG(arate)
+	q := makeline(c)
+	h := makegroup(n, srate)
+
+	go func() {
+		dep <- Customer{} // first departure
+
+		var t0, t1, t2 float64
+		var sid int
+		for i := 0; i < narr; i++ {
+			t0 += arrgen()
+			for t0 < chl {
+				rej <- Customer{T0: t0}
+				t0 += arrgen()
+			} // t0 >= chl
+			// accepted, or rejected
+
+			t1 = chs
+			if t0 >= t1 {
+				t1 = t0
+				q.arr[q.i] = t1
+			} else {
+				q.arr[q.i] = t1
+				q.i = q.isuc()
+			}
+			chl = q.arr[q.i] // update chl
+			// waited
+
+			t2, sid = h.gen(t1)
+			dep <- Customer{T0: t0, T1: t1, T2: t2, SrvrID: sid}
+			chs = h[0].now
+			// served and departed
+		}
+	}()
+
+	rejs = rej
+	deps = dep
+	return
+}
