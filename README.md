@@ -15,23 +15,20 @@ Performance of the queuing system under your configuration is evaluated by "aski
 
 Usage:
 ```go
-// do statistical analysis on output from the rejection channel, and
-// departure channel
-simtask := mmx.NewEnvironment()
-
-simtask.Arrive(_arrival_rate_)
-simtask.Line  (_line_capacity_)
-simtask.Serve (_number_of_servers_, _service_rate_per_server_)
-
-rejected, departed := simtask.Output()
-var c mmx.Customer
-for i := 0; i < _ncustomers_; i++ {
-        select {
-        case c = <-departed:
-                // ask the departed customer c
-        case c = <-rejected:
-                // ask the rejected customer c
-        }
+var rejected, departed <-chan mmck.Customer
+rejected, departed = mmck.Run(
+    mmck.NewExpArrival(10.0),
+    mmck.NewFifoLine(7),
+    mmck.MakeMinheapExpService(2, 1.0),
+)
+var cus mmck.Customer
+for i := 0; i < _n_arrivals_; i++ {
+    select {
+    case cus = <-rejected:
+        // do statistics for rejected customers
+    case cus = <-departed:
+        // do statistics for departed customers
+    }
 }
 ```
 Design:

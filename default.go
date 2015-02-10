@@ -1,31 +1,11 @@
-/* Package mmx implements simulation of M/M/c/k queueing systems. */
-
-package mmx
+package mmck
 
 import (
 	"math/rand"
 	"time"
 )
 
-type Customer struct {
-	T0     float64 // time of arrival of the customer
-	T1     float64 // time of service of the customer
-	T2     float64 // time of departure of the customer
-	SrvrID int     // identifier of the server that serves the customer
-}
-
-type Arrival interface {
-	Arrive() float64
-}
-
-type Line interface {
-	WaitOrPass(float64, float64) float64
-}
-
-type Service interface {
-	Serve(float64) (float64, int)
-}
-
+// exponential arrival
 type ExpArrival struct {
 	src  *rand.Rand
 	rate float64
@@ -42,6 +22,7 @@ func (e *ExpArrival) Arrive() float64 {
 	return e.src.ExpFloat64() / e.rate
 }
 
+// fifo fixed length queue
 type FifoLine struct {
 	arr  []float64
 	back int
@@ -56,16 +37,21 @@ func (q *FifoLine) isuc() int {
 	return (q.back + 1) % cap(q.arr)
 }
 
-func (q *FifoLine) WaitOrPass(t0, t float64) (t1, chl float64) {
+func (q FifoLine) WaitOrPass(t0, t float64) (t1 float64, sid int) {
+	sid = q.back
 	if t0 < t {// wait
-		q.arr[q.back] = t
+		q.arr[sid] = t
 		q.back = q.isuc()
 	} else {// pass
 		t = t0
-		q.arr[q.back] = t
+		q.arr[sid] = t
 	}
 	t1 = t
-	chl = q.arr[q.back]
+	return
+}
+
+func (q FifoLine) Next() float64 {
+	return q.arr[q.back]
 }
 
 // The exponential random number generator type, whose value, a function,
@@ -134,8 +120,12 @@ func (h MinheapExpService) Serve(now float64) (depTime float64, sid int) {
 	return
 }
 
+func (h MinheapExpService) Next() float64 {
+	return h[0].now
+}
+
 // Make a MinheapExpService of n servers, all of which are specified having service rate r.
-func makeMinheapExpService(n int, r float64) (h MinheapExpService) {
+func MakeMinheapExpService(n int, r float64) (h MinheapExpService) {
 	h = make([]*server, n)
 	p := make([]server, n) // pointer to the underlying array that stores servers
 	for i := 0; i < n; i++ {
@@ -143,52 +133,5 @@ func makeMinheapExpService(n int, r float64) (h MinheapExpService) {
 		p[i].gen = newExpRNG(r)
 		h[i] = &p[i]
 	}
-	return
-}
-
-func Combined(arate float64, narr int, c int, srate float64, n int) (rejs, deps <-chan Customer) {
-	/* all parameters should be none negative */
-	
-	var chl, chs float64
-	rej := make(chan Customer, 8)
-	dep := make(chan Customer, 32)
-
-	arrgen := newExpRNG(arate)
-	q := Newline(c)
-	h := makeMinheapExpService(n, srate)
-
-	go func() {
-		dep <- Customer{} // first departure
-
-		var t0, t1, t2 float64
-		var sid int
-		for i := 0; i < narr; i++ {
-			t0 += arrgen()
-			for t0 < chl {
-				rej <- Customer{T0: t0}
-				t0 += arrgen()
-			} // t0 >= chl
-			// accepted, or rejected
-
-			t1 = chs
-			if t0 >= t1 {// be served immediately
-				t1 = t0
-				q.arr[q.i] = t1
-			} else {// wait til available
-				q.arr[q.i] = t1
-				q.i = q.isuc()
-			}
-			chl = q.arr[q.i] // update chl
-			// waited
-
-			t2, sid = h.gen(t1)
-			dep <- Customer{T0: t0, T1: t1, T2: t2, SrvrID: sid}
-			chs = h[0].now // update chs
-			// served and departed
-		}
-	}()
-
-	rejs = rej
-	deps = dep
 	return
 }
