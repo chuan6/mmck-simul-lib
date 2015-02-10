@@ -3,9 +3,9 @@ A library for intuitive M/M/c/K queueing system simulation, written in Go.
 
 (Personal note: I had tried implementing the program in both C and C++, using event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
 
-In this program, ARRIVE, LINE, and SERVE are separated into three "independent" goroutines, synchronizing only through four channels. The channels carry time points to keep each goroutine moving forward in terms of time of a simulation environment. One difficulty I've encountered is that this approach makes the synchronization explicit, while using event list or state machine hides it.
+The resulting program implements API as output channels, so that a user program can have independence and "real time" simulation updates, both of which are difficult to achieve through other approaches.
 
-The resulting program also implements API as output channels, so that a user program can have independence and "real time" simulation updates, both of which are difficult to achieve through other approaches.
+Customized arrival module, line module, and service module can fit the library as long as the corresponding interfaces (Arrival, Line, Service) defined in mmck.go are implemented for the customized module. For sample implementation, please refer to defualt.go, where default exponential arrival module, FIFO fixed length line module, and min-heap exponential service module are implemented.
 
 The implementation is designed so that user can easily give different service rate for many servers, which is a difficult problem to get analytical solution. Performance-wise, time is mostly spent on synchronization (through channels) of the three goroutines.
 
