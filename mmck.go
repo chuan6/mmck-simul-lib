@@ -28,7 +28,7 @@ type Customer struct {
 }
 
 type Arrival interface {
-	Arrive() (at float64)
+	ArriveIn() (at float64)
 }
 
 type Waiter interface {
@@ -54,38 +54,36 @@ type Service interface {
 }
 
 func Run(a Arrival, l Line, s Service) (rejs, deps <-chan Customer) {
-	var chl, chs float64
 	rej := make(chan Customer, 8)
 	dep := make(chan Customer, 32)
 
 	go func() {
-		dep <- Customer{}
-
 		var t0, t1, t2 float64
 		var seat, server int
+		var chl, chs float64 // time of next available for line, and service
 		for {
-			t0 += a.Arrive()
+			t0 += a.ArriveIn()
 			for t0 < chl {
 				rej <- Customer{T0: t0}
-				t0 += a.Arrive()
-			} // t0 >= chl
-			// accepted, or rejected
+				t0 += a.ArriveIn()
+			}
+			// zero or more rejected, one accepted
 
 			t1, seat = l.WaitOrPass(t0, chs)
 			chl = l.Next()
-			// waited
+			// waited from t0 to t1 at seat
 
 			t2, server = s.Serve(t1)
-			// served
+			chs = s.Next()
+			// served from t1 to t2 by server
 
 			dep <- Customer{
-				T0: t0,
-				T1: t1,
-				T2: t2,
+				T0:     t0,
+				T1:     t1,
+				T2:     t2,
 				SeatID: seat,
 				SrvrID: server,
 			}
-			chs = s.Next()
 		}
 	}()
 
@@ -93,4 +91,3 @@ func Run(a Arrival, l Line, s Service) (rejs, deps <-chan Customer) {
 	deps = dep
 	return
 }
-

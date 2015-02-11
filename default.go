@@ -18,7 +18,7 @@ func NewExpArrival(rate float64) (e *ExpArrival) {
 	return
 }
 
-func (e *ExpArrival) Arrive() float64 {
+func (e *ExpArrival) ArriveIn() float64 {
 	return e.src.ExpFloat64() / e.rate
 }
 
@@ -39,10 +39,10 @@ func (q *FifoLine) isuc() int {
 
 func (q FifoLine) WaitOrPass(t0, t float64) (t1 float64, sid int) {
 	sid = q.back
-	if t0 < t {// wait
+	if t0 < t { // wait
 		q.arr[sid] = t
 		q.back = q.isuc()
-	} else {// pass
+	} else { // pass
 		t = t0
 		q.arr[sid] = t
 	}
@@ -70,7 +70,7 @@ func newExpRNG(rate float64) ExpRNG {
 
 // A server is a unit resource of the server group.
 type server struct {
-	id int
+	id  int
 	now float64
 	gen ExpRNG
 }
