@@ -38,16 +38,15 @@ func (q *FifoLine) isuc() int {
 }
 
 func (q FifoLine) WaitOrPass(t0, t float64) (t1 float64, sid int) {
-	sid = q.back
 	if t0 < t { // wait
-		q.arr[sid] = t
-		q.back = q.isuc()
+		q.arr[q.back] = t
 	} else { // pass
-		t = t0
-		q.arr[sid] = t
+		q.arr[q.back] = t0
 	}
-	t1 = t
-	return
+	t1 = q.arr[q.back]
+	sid = q.back
+
+	q.back = q.isuc()
 }
 
 func (q FifoLine) Next() float64 {
