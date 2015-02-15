@@ -73,14 +73,14 @@ public:
 
         customer next() {
                 customer cus{}; // zero-initialized
-                double chl = buf.earliest_available();
-                double chs = srv.earliest_available();
 
                 cus.t0 = arr.forward();
+                double chl = buf.earliest_available();
                 if (cus.t0 < chl)
                         return cus; // rejected
                 // accepted
 
+                double chs = srv.earliest_available();
                 buf.wait_or_pass(cus.t0, chs, cus.t1, cus.seat_id);
                 // waited
 
