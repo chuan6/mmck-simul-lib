@@ -47,6 +47,7 @@ func (q FifoLine) WaitOrPass(t0, t float64) (t1 float64, sid int) {
 	sid = q.back
 
 	q.back = q.isuc()
+	return
 }
 
 func (q FifoLine) Next() float64 {
