@@ -106,21 +106,20 @@ class exp_arrival : public arrival {
 public:
         exp_arrival(double rate) : gen(get_expgen(rate)) {}
 
-        double forward() {
-                return (epoch += gen());
-        }
+        double forward() { return (epoch += gen()); }
 };
 
 class ring : public line {
         std::vector<seat> buf;
+        int len;
         int back;
 public:
-        ring(size_t n) : buf(n), back(0) {}
+        ring(size_t n) : buf(n), len(n), back(0) {}
 
         void wait_or_pass(double t0, double t, double& t1, int& sid) {
                 t1 = buf[back].epoch = (t0 < t)? t : t0;
                 sid = buf[back].id;
-                back = (back+1) % buf.size();
+                back = (back+1) % len;
         }
         
         double earliest_available() const { return buf[back].epoch; }
@@ -131,20 +130,17 @@ class exp_server : public server {
 public:
         exp_server(int id, double rate) : server(id), gen(get_expgen(rate)) {}
 
-        double forward() {
-                return (epoch += gen());
-        }
+        double forward() { return (epoch += gen()); }
 };
 
 class minheap_service : public service {
         std::vector<server*> heap;
+        int limit; // greatest index in heap
 
         int min(int i, int j) const {
                 return (heap[i]->epoch > heap[j]->epoch)? j : i; 
         }
         int min_of_tri(int i) const {
-                int limit = heap.size() - 1;
-
                 int j = 2*i + 1;
                 if (j > limit || j < 0)
                         return i;
@@ -168,9 +164,8 @@ class minheap_service : public service {
                 }
         }
 public:
-        minheap_service(std::vector<server*> init) : heap(init) {
-                int i = heap.size() - 1;
-                for (i = (i-1)/2; i >= 0; i--) {
+        minheap_service(std::vector<server*> init) : heap(init), limit(init.size()-1) {
+                for (int i = (limit-1)/2; i >= 0; i--) {
                         heapify(i);
                 }
         }
@@ -184,6 +179,17 @@ public:
 
         double earliest_available() const { return heap[0]->epoch; }
 };
+
+int count_rejs(simulation& simul, int narrs) {
+        int n = 0;
+        customer cus;
+        for (int i = 0; i < narrs; i++) {
+                cus = simul.next();
+                if (is_rejected(cus))
+                        n++;
+        }
+        return n;
+}
 
 int main() {
         exp_arrival arr(2.0);
@@ -199,13 +205,6 @@ int main() {
         simulation simul(arr, buf, srv);
 
         int n = 100000000;
-        customer cus;
-        int nrej = 0;
-        for (int i = 0; i < n; i++) {
-                cus = simul.next();
-                if (is_rejected(cus))
-                        nrej++;
-                //std::cout << cus << std::endl;
-        }
+        int nrej = count_rejs(simul, n);
         std::cout << "ratio: " << (double) nrej / n << std::endl;
 }
