@@ -3,17 +3,20 @@ A library for intuitive M/M/c/K queueing system simulation, implemented both in 
 
 (Personal note: I had tried event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
 
-A client program can view the library as a "random queueing event generator", to which each call returns a departure or rejection structure. Within the struction, 1) arrival time, 2) service time, 3) departure time, 4) waiting position in queue, and 5) server id are recorded for a single customer.
+A client program can view the library as a "random queueing event generator", to which each call returns a departure or rejection structure. Within the structure, 1) arrival time, 2) service time, 3) departure time, 4) waiting position in queue, and 5) server id are recorded for a single customer.
 
-Besides using default queueing sytem setting, where we have Poisson arrival, FIFO queue, and exponential service time, a client program can provide customized modules for arrival, line (i.e. queue), and service, to simulate systems for which it is difficult to obtain close-form analytical results, as long as the corresponding interfaces for each module are implemented. For example, service module can be customized so that each server has different service rate, or even distribution; line module can be customized to incorporate certain priorities other than arrival time. 
+Besides using default queueing sytem setting, where we have Poisson arrival, FIFO queue, and exponential service time, a client program can provide customized modules for arrival, line (i.e. queue), and service, to simulate systems for which it is difficult to obtain closed-form analytical results, as long as the corresponding interfaces for each module are implemented. For example, a client program can provide service module where each server has different service rate, or even distribution, or line module which incorporates certain priorities other than arrival time. 
 
-Performance-wise, for default queueing system setting, time is mostly spent in calls to random number generators. A million departures+rejections are expected to take less than one second for go version, and less than half a second for C++ version. (Tested on my Thinkpad T420s i5 machine.)
+Performance-wise, for default queueing system setting, time is mostly spent in calls to random number generators. A million departures+rejections are expected to take much less than one second for go version, and much less than half a second for C++ version. (Tested on my Thinkpad T420s i5 machine.)
 
 To use it, 1) arrival rate; 2) queue capacity; 3) service rate per server; and 4) number of servers, need to be provided.
 
 Performance of the queuing system under your configuration is evaluated by "asking" the customers leaving the system (rejected or serviced), about their arrival time, service time, departure time, and server No. the customer used.
 
 Usage:
+
+go version:
+
 ```go
 var rejected, departed <-chan mmck.Customer
 rejected, departed = mmck.Run(
@@ -31,6 +34,8 @@ for i := 0; i < _n_arrivals_; i++ {
     }
 }
 ```
+
+C++ version:
 
 ```c++
 int count_rejs(simulation& simul, int narrs) {
