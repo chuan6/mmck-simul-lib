@@ -92,13 +92,11 @@ public:
 };
 
 typedef std::chrono::high_resolution_clock myclock;
-
 static myclock::time_point beginning = myclock::now();
-
 static std::function<double(void)> get_expgen(double rate) {
-        std::default_random_engine re((myclock::now() - beginning).count());
-        std::exponential_distribution<double> exp(rate);
-        return std::bind(exp, re);
+        return std::bind(std::exponential_distribution<double>{rate},
+                         std::default_random_engine{
+                                 (myclock::now() - beginning).count()});
 }
 
 class exp_arrival : public arrival {

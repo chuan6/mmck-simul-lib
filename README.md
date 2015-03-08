@@ -1,13 +1,13 @@
 # mmck-queueing-simulation-library
-A library for intuitive M/M/c/K queueing system simulation, written in Go.
+A library for intuitive M/M/c/K queueing system simulation, implemented both in go and in C++.
 
-(Personal note: I had tried implementing the program in both C and C++, using event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
+(Personal note: I had tried event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
 
-The resulting program implements API as output channels, so that a user program can have independence and "real time" simulation updates, both of which are difficult to achieve through other approaches.
+A client program can view the library as a "random queueing event generator", to which each call returns a departure or rejection structure. Within the struction, 1) arrival time, 2) service time, 3) departure time, 4) waiting position in queue, and 5) server id are recorded for a single customer.
 
-Customized arrival module, line module, and service module can fit the library as long as the corresponding interfaces (Arrival, Line, Service) defined in mmck.go are implemented for the customized module. For sample implementation, please refer to defualt.go, where default exponential arrival module, FIFO fixed length line module, and min-heap exponential service module are implemented.
+Besides using default queueing sytem setting, where we have Poisson arrival, FIFO queue, and exponential service time, a client program can provide customized modules for arrival, line (i.e. queue), and service, to simulate systems for which it is difficult to obtain close-form analytical results, as long as the corresponding interfaces for each module are implemented. For example, service module can be customized so that each server has different service rate, or even distribution; line module can be customized to incorporate certain priorities other than arrival time. 
 
-The implementation is designed so that user can easily give different service rate for many servers, which is a difficult problem to get analytical solution. Performance-wise, time is mostly spent on synchronization (through channels) of the three goroutines.
+Performance-wise, for default queueing system setting, time is mostly spent in calls to random number generators. A million departures+rejections are expected to take less than one second for go version, and less than half a second for C++ version. (Tested on my Thinkpad T420s i5 machine.)
 
 To use it, 1) arrival rate; 2) queue capacity; 3) service rate per server; and 4) number of servers, need to be provided.
 
@@ -29,6 +29,35 @@ for i := 0; i < _n_arrivals_; i++ {
     case cus = <-departed:
         // do statistics for departed customers
     }
+}
+```
+
+```c++
+int count_rejs(simulation& simul, int narrs) {
+    int n = 0;
+    customer cus;
+    for (int i = 0; i < narrs; i++) {
+        cus = simul.next();
+        if (is_rejected(cus))
+            n++;
+        }
+    return n;
+}
+
+int main() {
+    exp_arrival arr(2.0);
+    ring buf(5);
+    std::vector<exp_server> exp_srvrs {exp_server(1, 1.0), exp_server(2, 1.0)};
+    std::vector<server*> srvrs(exp_srvrs.size());
+    auto p = srvrs.begin();
+    for (auto q = exp_srvrs.begin(); p != srvrs.end(); p++, q++) {
+        *p = exp_srvrs.data() + (q - exp_srvrs.begin());
+    }
+    minheap_service srv(srvrs);
+    simulation simul(arr, buf, srv);
+    int n = 100000000;
+    int nrej = count_rejs(simul, n);
+    std::cout << "ratio: " << (double) nrej / n << std::endl;
 }
 ```
 Design:
