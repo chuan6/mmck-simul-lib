@@ -1,3 +1,6 @@
+#ifndef chuan6_mmck_h
+#define chuan6_mmck_h
+
 #include <chrono>
 #include <functional>
 #include <iostream>
@@ -171,3 +174,5 @@ public:
     // equals heap[0]->epoch is imposed by the minheap implementation
     double earliest_available() const { return heap[0]->epoch; }
 };
+
+#endif
