@@ -7,7 +7,7 @@ A client program can view the library as a "random queueing event generator", to
 
 Besides using default queueing sytem setting, where we have Poisson arrival, FIFO queue, and exponential service time, a client program can provide customized modules for arrival, line (i.e. queue), and service, to simulate systems for which it is difficult to obtain closed-form analytical results, as long as the corresponding interfaces for each module are implemented. For example, a client program can provide service module where each server has different service rate, or even distribution, or line module which incorporates certain priorities other than arrival time. 
 
-Performance-wise, for default queueing system setting, time is mostly spent in calls to random number generators. A million departures+rejections are expected to take much less than one second for go version, and much less than half a second for C++ version. (Tested on my Thinkpad T420s i5 machine; go version is compiled by gc, and C++ version is compiled by g++ -std=c++11 -O2.)
+Performance-wise, for default queueing system setting, time is mostly spent in calls to random number generators. A million departures+rejections are expected to take much less than one second for go version, and much less than half a second for C++ version. In the cases I've tried, go version generally takes 2.7 times the time of C++ version. Note that the go version is much simpler to understand and easier to use. (Tested on my Thinkpad T420s i5 machine; go version is compiled by gc, and C++ version is compiled by g++ -std=c++11 -O2.)
 
 To use it, 1) arrival rate; 2) queue capacity; 3) service rate per server; and 4) number of servers, need to be provided.
 
@@ -21,7 +21,7 @@ go version:
 var rejected, departed <-chan mmck.Customer
 rejected, departed = mmck.Run(
     mmck.NewExpArrival(10.0),
-    mmck.NewFifoLine(7),
+    mmck.NewRing(7),
     mmck.MakeMinheapExpService(2, 1.0),
 )
 var cus mmck.Customer

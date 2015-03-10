@@ -1,24 +1,6 @@
 package mmck
 
-/*
-Sample usage:
-    var rejected, departed <-chan mmck.Customer
-    rejected, departed = mmck.Run(
-        mmck.NewExpArrival(10.0),
-        mmck.NewFifoLine(7),
-        mmck.MakeMinheapExpService(2, 1.0),
-    )
-    var cus mmck.Customer
-    for i := 0; i < _n_arrivals_; i++ {
-        select {
-        case cus = <-rejected:
-            // do statistics for rejected customers
-        case cus = <-departed:
-            // do statistics for departed customers
-        }
-    }
-*/
-
+// the complete record of experience of a customer
 type Customer struct {
 	T0     float64 // time of arrival of the customer
 	T1     float64 // time of service of the customer
@@ -27,6 +9,7 @@ type Customer struct {
 	SrvrID int     // identifier of the server that serves the customer
 }
 
+// a customized arrival module needs to implement Arrival interface
 type Arrival interface {
 	ArriveIn() (at float64)
 }
@@ -43,11 +26,13 @@ type Nexter interface {
 	Next() (nextAvailableAt float64)
 }
 
+// a customized queue module needs to implement Line interface
 type Line interface {
 	Waiter
 	Nexter
 }
 
+// a customized service module needs to implement Service interface
 type Service interface {
 	Server
 	Nexter
@@ -56,6 +41,8 @@ type Service interface {
 func Run(a Arrival, l Line, s Service) (rejs, deps <-chan Customer) {
 	rej := make(chan Customer, 8)
 	dep := make(chan Customer, 32)
+	// Note: adjust buffer size of both channels to tune performance;
+	// default value works best in my cases.
 
 	go func() {
 		var t0, t1, t2 float64
@@ -66,8 +53,7 @@ func Run(a Arrival, l Line, s Service) (rejs, deps <-chan Customer) {
 			for t0 < chl {
 				rej <- Customer{T0: t0}
 				t0 += a.ArriveIn()
-			}
-			// zero or more rejected, one accepted
+			} // zero or more rejected, one accepted
 
 			t1, seat = l.WaitOrPass(t0, chs)
 			chl = l.Next()
@@ -83,7 +69,7 @@ func Run(a Arrival, l Line, s Service) (rejs, deps <-chan Customer) {
 				T2:     t2,
 				SeatID: seat,
 				SrvrID: server,
-			}
+			} // departed
 		}
 	}()
 

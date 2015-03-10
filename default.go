@@ -5,7 +5,10 @@ import (
 	"time"
 )
 
-// exponential arrival
+// This default implementation produces the same results as analytical approach
+// from tools such as Mathematica.
+
+// exponential interval of arrivals; implements Arrival interface
 type ExpArrival struct {
 	src  *rand.Rand
 	rate float64
@@ -22,22 +25,18 @@ func (e *ExpArrival) ArriveIn() float64 {
 	return e.src.ExpFloat64() / e.rate
 }
 
-// fifo fixed length queue
-type FifoLine struct {
+// fixed length queue that implements Line interface
+type Ring struct {
 	arr  []float64
 	back int
 }
 
-func NewFifoLine(c int) (q FifoLine) {
+func NewRing(c int) (q Ring) {
 	q.arr = make([]float64, c)
 	return
 }
 
-func (q *FifoLine) isuc() int {
-	return (q.back + 1) % cap(q.arr)
-}
-
-func (q FifoLine) WaitOrPass(t0, t float64) (t1 float64, sid int) {
+func (q Ring) WaitOrPass(t0, t float64) (t1 float64, sid int) {
 	if t0 < t { // wait
 		q.arr[q.back] = t
 	} else { // pass
@@ -46,11 +45,12 @@ func (q FifoLine) WaitOrPass(t0, t float64) (t1 float64, sid int) {
 	t1 = q.arr[q.back]
 	sid = q.back
 
-	q.back = q.isuc()
+	q.back = (q.back + 1) % cap(q.arr)
 	return
 }
 
-func (q FifoLine) Next() float64 {
+// Note: the FIFO property is imposed by the minheap service module instead.
+func (q Ring) Next() float64 {
 	return q.arr[q.back]
 }
 
@@ -120,6 +120,8 @@ func (h MinheapExpService) Serve(now float64) (depTime float64, sid int) {
 	return
 }
 
+// Guarantees that the eariliest available time of the service module is
+// returned.
 func (h MinheapExpService) Next() float64 {
 	return h[0].now
 }
