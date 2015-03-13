@@ -1,4 +1,4 @@
-# mmck-queueing-simulation-library
+# mmck queueing system simulation library
 A library for intuitive M/M/c/K queueing system simulation, implemented both in go, and in C++.
 
 (Personal note: I had tried event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
