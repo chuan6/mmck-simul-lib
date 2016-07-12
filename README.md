@@ -1,7 +1,12 @@
-# mmck queueing system simulation library
+# M/M/c/K queueing system simulation library
 A library for intuitive M/M/c/K queueing system simulation, implemented both in go, and in C++.
 
-(Personal note: I had tried event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
+According to [Kendall's notation](https://en.wikipedia.org/wiki/Kendall%27s_notation):
+
+    M  (Markovian arrival intervals)
+    /M (Markovian service time)
+    /c (number of servers)
+    /K (capacity for customers)
 
 A client program can view the library as a "random queueing event generator", to which each call returns a departure or rejection structure. Within the structure, 1) arrival time, 2) service time, 3) departure time, 4) waiting position in queue, and 5) server id are recorded for a single customer.
 
@@ -66,5 +71,8 @@ int main() {
 }
 ```
 Design:
+
+(Personal note: I had tried event list based approach, and state machine based approach. None offered the program clarify, modularity that I wanted to achieve.)
+
 ![Alt text](images_design_illustration/scan1.jpg?raw=true "Page 1.")
 ![Alt text](images_design_illustration/scan2.jpg?raw=true "Page 2.")
